@@ -152,15 +152,84 @@ def find_best_model():
 
 def clean_input_data(df):
     """
-    Basic cleaning for prediction input.
-
-    IMPORTANT:
-    If your saved model is a complete sklearn Pipeline,
-    avoid doing transformations here that are already handled
-    inside the pipeline.
+    Apply the same feature engineering used during model training.
     """
 
     df = df.copy()
+
+    # --------------------------------------------------------
+    # Basic data type conversion
+    # --------------------------------------------------------
+
+    if "TotalCharges" in df.columns:
+        df["TotalCharges"] = pd.to_numeric(
+            df["TotalCharges"],
+            errors="coerce"
+        )
+
+    # --------------------------------------------------------
+    # AvgMonthlyCharge
+    # --------------------------------------------------------
+
+    if "AvgMonthlyCharge" not in df.columns:
+
+        df["AvgMonthlyCharge"] = np.where(
+            df["tenure"] > 0,
+            df["TotalCharges"] / df["tenure"],
+            df["MonthlyCharges"]
+        )
+
+    # --------------------------------------------------------
+    # TenureGroup
+    # --------------------------------------------------------
+
+    if "TenureGroup" not in df.columns:
+
+        df["TenureGroup"] = pd.cut(
+            df["tenure"],
+            bins=[-1, 12, 24, 48, 60, np.inf],
+            labels=[
+                "0-12",
+                "13-24",
+                "25-48",
+                "49-60",
+                "60+"
+            ]
+        )
+
+    # --------------------------------------------------------
+    # NumServices
+    # --------------------------------------------------------
+
+    if "NumServices" not in df.columns:
+
+        service_columns = [
+            "PhoneService",
+            "MultipleLines",
+            "OnlineSecurity",
+            "OnlineBackup",
+            "DeviceProtection",
+            "TechSupport",
+            "StreamingTV",
+            "StreamingMovies"
+        ]
+
+        df["NumServices"] = 0
+
+        for col in service_columns:
+
+            if col in df.columns:
+
+                df["NumServices"] += (
+                    df[col]
+                    .astype(str)
+                    .str.strip()
+                    .str.lower()
+                    .isin(["yes", "fiber optic", "dsl"])
+                    .astype(int)
+                )
+
+    return df
 
     # Convert TotalCharges if present
     if "TotalCharges" in df.columns:
