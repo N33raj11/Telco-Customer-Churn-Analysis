@@ -350,37 +350,126 @@ if page == "🏠 Dashboard":
     st.markdown("---")
 
     # ========================================================
-    # KPI SECTION
+    # CHECK DATASET
     # ========================================================
 
-    if dataset is not None:
+    if dataset is None:
 
-        total_customers = len(dataset)
+        st.error(
+            "❌ Telecom dataset could not be found."
+        )
+
+        st.info(
+            f"""
+            Please make sure your CSV file is inside:
+
+            `{DATA_DIR}`
+
+            Supported filenames:
+
+            - WA_Fn-UseC_-Telco-Customer-Churn.csv
+            - telco_customer_churn.csv
+            - Telco-Customer-Churn.csv
+            - telco-churn.csv
+            - cleaned_telco_churn.csv
+            """
+        )
+
+    else:
+
+        # ====================================================
+        # PREPARE DASHBOARD DATA
+        # ====================================================
+
+        dashboard_df = dataset.copy()
 
         # ----------------------------------------------------
-        # Churn calculation
+        # Clean Churn column
         # ----------------------------------------------------
 
-        if "Churn" in dataset.columns:
+        if "Churn" in dashboard_df.columns:
 
-            churn_values = (
-                dataset["Churn"]
+            dashboard_df["Churn_Clean"] = (
+                dashboard_df["Churn"]
                 .astype(str)
                 .str.strip()
                 .str.lower()
             )
 
-            churned = churn_values.isin(
-                [
-                    "yes",
-                    "1",
-                    "true",
-                    "churn",
-                    "churned"
-                ]
-            ).sum()
+            dashboard_df["Churn_Label"] = (
+                dashboard_df["Churn_Clean"]
+                .map({
+                    "yes": "Churned",
+                    "1": "Churned",
+                    "true": "Churned",
+                    "churn": "Churned",
+                    "churned": "Churned",
+                    "no": "Stayed",
+                    "0": "Stayed",
+                    "false": "Stayed",
+                    "stay": "Stayed",
+                    "stayed": "Stayed"
+                })
+            )
 
-            stayed = total_customers - churned
+            # Handle unexpected values safely
+            dashboard_df["Churn_Label"] = (
+                dashboard_df["Churn_Label"]
+                .fillna(
+                    dashboard_df["Churn"]
+                    .astype(str)
+                    .str.strip()
+                )
+            )
+
+        # ----------------------------------------------------
+        # Numeric columns
+        # ----------------------------------------------------
+
+        if "MonthlyCharges" in dashboard_df.columns:
+
+            dashboard_df["MonthlyCharges"] = pd.to_numeric(
+                dashboard_df["MonthlyCharges"],
+                errors="coerce"
+            )
+
+        if "TotalCharges" in dashboard_df.columns:
+
+            dashboard_df["TotalCharges"] = pd.to_numeric(
+                dashboard_df["TotalCharges"],
+                errors="coerce"
+            )
+
+        if "tenure" in dashboard_df.columns:
+
+            dashboard_df["tenure"] = pd.to_numeric(
+                dashboard_df["tenure"],
+                errors="coerce"
+            )
+
+        # ====================================================
+        # KPI CALCULATIONS
+        # ====================================================
+
+        total_customers = len(dashboard_df)
+
+        # ----------------------------------------------------
+        # Churn KPIs
+        # ----------------------------------------------------
+
+        if "Churn_Label" in dashboard_df.columns:
+
+            churned = (
+                dashboard_df["Churn_Label"]
+                .eq("Churned")
+                .sum()
+            )
+
+            stayed = (
+                dashboard_df["Churn_Label"]
+                .eq("Stayed")
+                .sum()
+            )
 
             churn_rate = (
                 churned / total_customers * 100
@@ -398,13 +487,10 @@ if page == "🏠 Dashboard":
         # Average Monthly Charges
         # ----------------------------------------------------
 
-        if "MonthlyCharges" in dataset.columns:
+        if "MonthlyCharges" in dashboard_df.columns:
 
             avg_monthly_charges = (
-                pd.to_numeric(
-                    dataset["MonthlyCharges"],
-                    errors="coerce"
-                )
+                dashboard_df["MonthlyCharges"]
                 .mean()
             )
 
@@ -416,13 +502,10 @@ if page == "🏠 Dashboard":
         # Average Tenure
         # ----------------------------------------------------
 
-        if "tenure" in dataset.columns:
+        if "tenure" in dashboard_df.columns:
 
             avg_tenure = (
-                pd.to_numeric(
-                    dataset["tenure"],
-                    errors="coerce"
-                )
+                dashboard_df["tenure"]
                 .mean()
             )
 
@@ -441,153 +524,381 @@ if page == "🏠 Dashboard":
         with kpi1:
 
             st.metric(
-                "👥 Total Customers",
-                f"{total_customers:,}"
+                label="👥 Total Customers",
+                value=f"{total_customers:,}"
             )
 
         with kpi2:
 
             st.metric(
-                "⚠️ Churned Customers",
-                f"{churned:,}"
+                label="⚠️ Churned Customers",
+                value=f"{churned:,}"
             )
 
         with kpi3:
 
             st.metric(
-                "📉 Churn Rate",
-                f"{churn_rate:.2f}%"
+                label="📉 Churn Rate",
+                value=f"{churn_rate:.2f}%"
             )
 
         with kpi4:
 
             st.metric(
-                "💰 Avg Monthly Charges",
-                f"${avg_monthly_charges:,.2f}"
+                label="💰 Avg Monthly Charges",
+                value=f"${avg_monthly_charges:,.2f}"
             )
 
         with kpi5:
 
             st.metric(
-                "⏳ Avg Tenure",
-                f"{avg_tenure:.1f} months"
+                label="⏳ Avg Tenure",
+                value=f"{avg_tenure:.1f} months"
             )
 
         st.markdown("---")
 
         # ====================================================
-        # CHART 1 — CHURN VS STAY
+        # IMPORT PLOTLY
+        # ====================================================
+
+        import plotly.express as px
+        import plotly.graph_objects as go
+
+        # ====================================================
+        # CHART 1
+        # CUSTOMER CHURN DISTRIBUTION
         # ====================================================
 
         st.subheader("📊 1. Customer Churn Distribution")
 
-        if "Churn" in dataset.columns:
+        if "Churn_Label" in dashboard_df.columns:
 
-            churn_chart = (
-                dataset["Churn"]
+            churn_distribution = (
+                dashboard_df["Churn_Label"]
                 .value_counts()
                 .rename_axis("Customer Status")
                 .reset_index(name="Customers")
             )
 
-            st.bar_chart(
-                churn_chart.set_index("Customer Status")
+            fig1 = px.pie(
+                churn_distribution,
+                names="Customer Status",
+                values="Customers",
+                hole=0.45,
+                title="Customers by Churn Status"
+            )
+
+            fig1.update_traces(
+                textposition="inside",
+                textinfo="percent+label"
+            )
+
+            fig1.update_layout(
+                height=430,
+                margin=dict(
+                    l=20,
+                    r=20,
+                    t=60,
+                    b=20
+                ),
+                legend_title_text="Status"
+            )
+
+            st.plotly_chart(
+                fig1,
+                use_container_width=True
             )
 
             st.caption(
-                "Shows the overall distribution of customers "
-                "who stayed versus customers who churned."
+                f"Overall churn rate: {churn_rate:.2f}% "
+                f"({churned:,} of {total_customers:,} customers)."
+            )
+
+        else:
+
+            st.warning(
+                "Churn column is not available in the dataset."
             )
 
         st.markdown("---")
 
         # ====================================================
-        # CHART 2 — CHURN BY CONTRACT
+        # CHART 2
+        # CHURN BY CONTRACT TYPE
         # ====================================================
 
         st.subheader("📄 2. Churn by Contract Type")
 
         if (
-            "Contract" in dataset.columns
-            and "Churn" in dataset.columns
+            "Contract" in dashboard_df.columns
+            and "Churn_Label" in dashboard_df.columns
         ):
 
-            contract_churn = pd.crosstab(
-                dataset["Contract"],
-                dataset["Churn"]
+            contract_data = (
+                dashboard_df[
+                    dashboard_df["Churn_Label"]
+                    .isin(["Churned", "Stayed"])
+                ]
+                .groupby(
+                    ["Contract", "Churn_Label"]
+                )
+                .size()
+                .reset_index(name="Customers")
             )
 
-            st.bar_chart(contract_churn)
+            contract_order = [
+                "Month-to-month",
+                "One year",
+                "Two year"
+            ]
+
+            contract_data["Contract"] = pd.Categorical(
+                contract_data["Contract"],
+                categories=contract_order,
+                ordered=True
+            )
+
+            contract_data = contract_data.sort_values(
+                "Contract"
+            )
+
+            fig2 = px.bar(
+                contract_data,
+                x="Contract",
+                y="Customers",
+                color="Churn_Label",
+                barmode="group",
+                text="Customers",
+                category_orders={
+                    "Contract": contract_order,
+                    "Churn_Label": [
+                        "Stayed",
+                        "Churned"
+                    ]
+                },
+                title="Customer Churn by Contract Type"
+            )
+
+            fig2.update_traces(
+                textposition="outside"
+            )
+
+            fig2.update_layout(
+                height=450,
+                xaxis_title="Contract Type",
+                yaxis_title="Number of Customers",
+                legend_title="Customer Status",
+                margin=dict(
+                    l=20,
+                    r=20,
+                    t=60,
+                    b=20
+                )
+            )
+
+            st.plotly_chart(
+                fig2,
+                use_container_width=True
+            )
 
             st.caption(
-                "Month-to-month customers can be compared with "
-                "one-year and two-year contract customers."
+                "Compare customer retention and churn across "
+                "different contract durations."
             )
 
-        st.markdown("---")
-
         # ====================================================
-        # CHART 3 — CHURN BY INTERNET SERVICE
+        # CHART 3
+        # CHURN RATE BY INTERNET SERVICE
         # ====================================================
 
-        st.subheader("🌐 3. Churn by Internet Service")
+        st.subheader("🌐 3. Churn Rate by Internet Service")
 
         if (
-            "InternetService" in dataset.columns
-            and "Churn" in dataset.columns
+            "InternetService" in dashboard_df.columns
+            and "Churn_Label" in dashboard_df.columns
         ):
 
-            internet_churn = pd.crosstab(
-                dataset["InternetService"],
-                dataset["Churn"]
+            internet_data = (
+                dashboard_df[
+                    dashboard_df["Churn_Label"]
+                    .isin(["Churned", "Stayed"])
+                ]
+                .groupby("InternetService")
+                .agg(
+                    Total_Customers=("Churn_Label", "size"),
+                    Churned_Customers=(
+                        "Churn_Label",
+                        lambda x: (x == "Churned").sum()
+                    )
+                )
+                .reset_index()
             )
 
-            st.bar_chart(internet_churn)
+            internet_data["Churn_Rate"] = (
+                internet_data["Churned_Customers"]
+                / internet_data["Total_Customers"]
+                * 100
+            )
+
+            internet_data = internet_data.sort_values(
+                "Churn_Rate",
+                ascending=False
+            )
+
+            fig3 = px.bar(
+                internet_data,
+                x="InternetService",
+                y="Churn_Rate",
+                text="Churn_Rate",
+                title="Churn Rate by Internet Service",
+                labels={
+                    "InternetService": "Internet Service",
+                    "Churn_Rate": "Churn Rate (%)"
+                }
+            )
+
+            fig3.update_traces(
+                texttemplate="%{text:.1f}%",
+                textposition="outside"
+            )
+
+            fig3.update_layout(
+                height=450,
+                yaxis_title="Churn Rate (%)",
+                xaxis_title="Internet Service",
+                yaxis=dict(
+                    range=[
+                        0,
+                        max(
+                            internet_data["Churn_Rate"].max() * 1.15,
+                            10
+                        )
+                    ]
+                ),
+                margin=dict(
+                    l=20,
+                    r=20,
+                    t=60,
+                    b=20
+                )
+            )
+
+            st.plotly_chart(
+                fig3,
+                use_container_width=True
+            )
 
             st.caption(
-                "Compares churn behavior across DSL, Fiber optic, "
-                "and customers without internet service."
+                "Churn rate is calculated as churned customers "
+                "divided by total customers within each service group."
             )
 
-        st.markdown("---")
-
         # ====================================================
-        # CHART 4 — CHURN BY PAYMENT METHOD
+        # CHART 4
+        # CHURN RATE BY PAYMENT METHOD
         # ====================================================
 
-        st.subheader("💳 4. Churn by Payment Method")
+        st.subheader("💳 4. Churn Rate by Payment Method")
 
         if (
-            "PaymentMethod" in dataset.columns
-            and "Churn" in dataset.columns
+            "PaymentMethod" in dashboard_df.columns
+            and "Churn_Label" in dashboard_df.columns
         ):
 
-            payment_churn = pd.crosstab(
-                dataset["PaymentMethod"],
-                dataset["Churn"]
+            payment_data = (
+                dashboard_df[
+                    dashboard_df["Churn_Label"]
+                    .isin(["Churned", "Stayed"])
+                ]
+                .groupby("PaymentMethod")
+                .agg(
+                    Total_Customers=("Churn_Label", "size"),
+                    Churned_Customers=(
+                        "Churn_Label",
+                        lambda x: (x == "Churned").sum()
+                    )
+                )
+                .reset_index()
             )
 
-            st.bar_chart(payment_churn)
+            payment_data["Churn_Rate"] = (
+                payment_data["Churned_Customers"]
+                / payment_data["Total_Customers"]
+                * 100
+            )
+
+            payment_data = payment_data.sort_values(
+                "Churn_Rate",
+                ascending=True
+            )
+
+            fig4 = px.bar(
+                payment_data,
+                x="Churn_Rate",
+                y="PaymentMethod",
+                orientation="h",
+                text="Churn_Rate",
+                title="Churn Rate by Payment Method",
+                labels={
+                    "PaymentMethod": "Payment Method",
+                    "Churn_Rate": "Churn Rate (%)"
+                }
+            )
+
+            fig4.update_traces(
+                texttemplate="%{text:.1f}%",
+                textposition="outside"
+            )
+
+            fig4.update_layout(
+                height=500,
+                xaxis_title="Churn Rate (%)",
+                yaxis_title="Payment Method",
+                xaxis=dict(
+                    range=[
+                        0,
+                        max(
+                            payment_data["Churn_Rate"].max() * 1.15,
+                            10
+                        )
+                    ]
+                ),
+                margin=dict(
+                    l=20,
+                    r=60,
+                    t=60,
+                    b=20
+                )
+            )
+
+            st.plotly_chart(
+                fig4,
+                use_container_width=True
+            )
 
             st.caption(
-                "Identifies differences in churn across customer "
-                "payment methods."
+                "Payment methods are ranked by their customer "
+                "churn rate."
             )
 
-        st.markdown("---")
-
         # ====================================================
-        # CHART 5 — CHURN RATE BY TENURE GROUP
+        # CHART 5
+        # CHURN RATE BY TENURE GROUP
         # ====================================================
 
         st.subheader("📈 5. Churn Rate by Tenure Group")
 
         if (
-            "tenure" in dataset.columns
-            and "Churn" in dataset.columns
+            "tenure" in dashboard_df.columns
+            and "Churn_Label" in dashboard_df.columns
         ):
 
-            tenure_data = dataset.copy()
+            tenure_data = dashboard_df.copy()
+
+            # ------------------------------------------------
+            # Create ordered tenure groups
+            # ------------------------------------------------
 
             tenure_data["TenureGroup"] = pd.cut(
                 tenure_data["tenure"],
@@ -605,50 +916,93 @@ if page == "🏠 Dashboard":
                     "25-48 months",
                     "49-60 months",
                     "60+ months"
-                ]
+                ],
+                ordered=True
             )
 
-            tenure_data["_ChurnFlag"] = (
-                tenure_data["Churn"]
-                .astype(str)
-                .str.strip()
-                .str.lower()
-                .isin(
-                    [
-                        "yes",
-                        "1",
-                        "true",
-                        "churn",
-                        "churned"
-                    ]
-                )
-                .astype(int)
-            )
+            # ------------------------------------------------
+            # Calculate churn rate
+            # ------------------------------------------------
 
             tenure_churn = (
-                tenure_data
+                tenure_data[
+                    tenure_data["Churn_Label"]
+                    .isin(["Churned", "Stayed"])
+                ]
                 .groupby(
                     "TenureGroup",
                     observed=False
-                )["_ChurnFlag"]
-                .mean()
-                .mul(100)
+                )
+                .agg(
+                    Total_Customers=("Churn_Label", "size"),
+                    Churned_Customers=(
+                        "Churn_Label",
+                        lambda x: (x == "Churned").sum()
+                    )
+                )
+                .reset_index()
             )
 
-            st.line_chart(
-                tenure_churn
+            tenure_churn["Churn_Rate"] = (
+                tenure_churn["Churned_Customers"]
+                / tenure_churn["Total_Customers"]
+                * 100
+            )
+
+            # ------------------------------------------------
+            # Line chart
+            # ------------------------------------------------
+
+            fig5 = px.line(
+                tenure_churn,
+                x="TenureGroup",
+                y="Churn_Rate",
+                markers=True,
+                text="Churn_Rate",
+                title="Churn Rate Across Customer Tenure"
+            )
+
+            fig5.update_traces(
+                texttemplate="%{text:.1f}%",
+                textposition="top center"
+            )
+
+            fig5.update_layout(
+                height=450,
+                xaxis_title="Tenure Group",
+                yaxis_title="Churn Rate (%)",
+                yaxis=dict(
+                    range=[
+                        0,
+                        max(
+                            tenure_churn["Churn_Rate"].max() * 1.20,
+                            10
+                        )
+                    ]
+                ),
+                margin=dict(
+                    l=20,
+                    r=20,
+                    t=60,
+                    b=20
+                )
+            )
+
+            st.plotly_chart(
+                fig5,
+                use_container_width=True
             )
 
             st.caption(
-                "Shows the percentage of customers who churn "
-                "within different tenure groups."
+                "This chart helps identify which customer tenure "
+                "groups have the highest churn risk."
             )
-
-        st.markdown("---")
 
         # ====================================================
         # BUSINESS INSIGHTS
         # ====================================================
+
+        st.markdown("---")
 
         st.subheader("💡 Business Insights")
 
@@ -662,7 +1016,7 @@ if page == "🏠 Dashboard":
 
                 - Total customers: **{total_customers:,}**
                 - Churned customers: **{churned:,}**
-                - Customers retained: **{stayed:,}**
+                - Retained customers: **{stayed:,}**
                 - Overall churn rate: **{churn_rate:.2f}%**
                 """
             )
@@ -681,32 +1035,6 @@ if page == "🏠 Dashboard":
                   **{"Loaded ✅" if model else "Not Found ❌"}**
                 """
             )
-
-    else:
-
-        # ====================================================
-        # DATASET NOT FOUND
-        # ====================================================
-
-        st.error(
-            "❌ Telecom dataset could not be found."
-        )
-
-        st.info(
-            f"""
-            Please make sure your CSV file is inside:
-
-            `{DATA_DIR}`
-
-            Supported filenames include:
-
-            - WA_Fn-UseC_-Telco-Customer-Churn.csv
-            - telco_customer_churn.csv
-            - Telco-Customer-Churn.csv
-            - telco-churn.csv
-            - cleaned_telco_churn.csv
-            """
-        )
 
     # ========================================================
     # PROJECT PIPELINE
@@ -743,8 +1071,7 @@ if page == "🏠 Dashboard":
                 """,
                 unsafe_allow_html=True
             )
-
-
+       
 # ============================================================
 # CHURN PREDICTION
 # ============================================================
