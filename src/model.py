@@ -11,5 +11,5 @@ def save_model(model, path: str) -> None:
 def load_model(path: str):
     """Load a saved model/pipeline."""
     return joblib.load(path)
-git add .
-git status
+
+
