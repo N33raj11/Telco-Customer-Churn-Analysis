@@ -87,7 +87,7 @@ def load_model(model_path):
     """
     try:
         return joblib.load(model_path)
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -96,16 +96,34 @@ def load_dataset():
     """
     Try to locate and load the telecom churn dataset.
     """
+
     possible_files = [
-        os.path.join(DATA_DIR, "WA_Fn-UseC_-Telco-Customer-Churn.csv"),
-        os.path.join(DATA_DIR, "telco_customer_churn.csv"),
-        os.path.join(DATA_DIR, "Telco-Customer-Churn.csv"),
-        os.path.join(DATA_DIR, "telco-churn.csv"),
-        os.path.join(DATA_DIR, "cleaned_telco_churn.csv"),
+        os.path.join(
+            DATA_DIR,
+            "WA_Fn-UseC_-Telco-Customer-Churn.csv"
+        ),
+        os.path.join(
+            DATA_DIR,
+            "telco_customer_churn.csv"
+        ),
+        os.path.join(
+            DATA_DIR,
+            "Telco-Customer-Churn.csv"
+        ),
+        os.path.join(
+            DATA_DIR,
+            "telco-churn.csv"
+        ),
+        os.path.join(
+            DATA_DIR,
+            "cleaned_telco_churn.csv"
+        ),
     ]
 
     for file_path in possible_files:
+
         if os.path.exists(file_path):
+
             try:
                 return pd.read_csv(file_path)
             except Exception:
@@ -130,22 +148,30 @@ def find_best_model():
     ]
 
     for model_name in preferred_models:
-        model_path = os.path.join(MODEL_DIR, model_name)
+
+        model_path = os.path.join(
+            MODEL_DIR,
+            model_name
+        )
 
         if os.path.exists(model_path):
+
             return model_path
 
-    # If no preferred model is found,
-    # search for any .pkl model.
     if os.path.exists(MODEL_DIR):
 
         model_files = [
-            file for file in os.listdir(MODEL_DIR)
+            file
+            for file in os.listdir(MODEL_DIR)
             if file.endswith(".pkl")
         ]
 
         if model_files:
-            return os.path.join(MODEL_DIR, model_files[0])
+
+            return os.path.join(
+                MODEL_DIR,
+                model_files[0]
+            )
 
     return None
 
@@ -158,10 +184,11 @@ def clean_input_data(df):
     df = df.copy()
 
     # --------------------------------------------------------
-    # Basic data type conversion
+    # TotalCharges
     # --------------------------------------------------------
 
     if "TotalCharges" in df.columns:
+
         df["TotalCharges"] = pd.to_numeric(
             df["TotalCharges"],
             errors="coerce"
@@ -187,7 +214,14 @@ def clean_input_data(df):
 
         df["TenureGroup"] = pd.cut(
             df["tenure"],
-            bins=[-1, 12, 24, 48, 60, np.inf],
+            bins=[
+                -1,
+                12,
+                24,
+                48,
+                60,
+                np.inf
+            ],
             labels=[
                 "0-12",
                 "13-24",
@@ -225,18 +259,9 @@ def clean_input_data(df):
                     .astype(str)
                     .str.strip()
                     .str.lower()
-                    .isin(["yes", "fiber optic", "dsl"])
+                    .eq("yes")
                     .astype(int)
                 )
-
-    return df
-
-    # Convert TotalCharges if present
-    if "TotalCharges" in df.columns:
-        df["TotalCharges"] = pd.to_numeric(
-            df["TotalCharges"],
-            errors="coerce"
-        )
 
     return df
 
@@ -253,7 +278,10 @@ def predict_customer(model, customer_df):
     probability = None
 
     if hasattr(model, "predict_proba"):
-        probability = model.predict_proba(customer_df)[0]
+
+        probability = model.predict_proba(
+            customer_df
+        )[0]
 
     return prediction, probability
 
@@ -291,12 +319,15 @@ with st.sidebar:
 # ============================================================
 
 dataset = load_dataset()
+
 model_path = find_best_model()
 
 model = None
 
 if model_path:
+
     model = load_model(model_path)
+
 
 # ============================================================
 # DASHBOARD
@@ -304,26 +335,31 @@ if model_path:
 
 if page == "🏠 Dashboard":
 
-    st.title("📡 Telecom Customer Churn Prediction")
+    st.title("📡 Telecom Customer Churn Dashboard")
 
     st.markdown(
         """
-        ### Predict customer churn using Machine Learning
+        ### Customer Retention & Churn Analytics
 
-        This application analyzes telecom customer information and
-        predicts whether a customer is likely to **Churn** or **Stay**.
+        Analyze customer behavior, identify churn patterns,
+        and understand the key business factors associated
+        with customer attrition.
         """
     )
 
     st.markdown("---")
 
-    # --------------------------------------------------------
+    # ========================================================
     # KPI SECTION
-    # --------------------------------------------------------
+    # ========================================================
 
     if dataset is not None:
 
         total_customers = len(dataset)
+
+        # ----------------------------------------------------
+        # Churn calculation
+        # ----------------------------------------------------
 
         if "Churn" in dataset.columns:
 
@@ -335,8 +371,16 @@ if page == "🏠 Dashboard":
             )
 
             churned = churn_values.isin(
-                ["yes", "1", "true", "churn"]
+                [
+                    "yes",
+                    "1",
+                    "true",
+                    "churn",
+                    "churned"
+                ]
             ).sum()
+
+            stayed = total_customers - churned
 
             churn_rate = (
                 churned / total_customers * 100
@@ -345,76 +389,328 @@ if page == "🏠 Dashboard":
             )
 
         else:
+
             churned = 0
+            stayed = 0
             churn_rate = 0
 
-        col1, col2, col3, col4 = st.columns(4)
+        # ----------------------------------------------------
+        # Average Monthly Charges
+        # ----------------------------------------------------
 
-        with col1:
+        if "MonthlyCharges" in dataset.columns:
+
+            avg_monthly_charges = (
+                pd.to_numeric(
+                    dataset["MonthlyCharges"],
+                    errors="coerce"
+                )
+                .mean()
+            )
+
+        else:
+
+            avg_monthly_charges = 0
+
+        # ----------------------------------------------------
+        # Average Tenure
+        # ----------------------------------------------------
+
+        if "tenure" in dataset.columns:
+
+            avg_tenure = (
+                pd.to_numeric(
+                    dataset["tenure"],
+                    errors="coerce"
+                )
+                .mean()
+            )
+
+        else:
+
+            avg_tenure = 0
+
+        # ====================================================
+        # FIVE KPIs
+        # ====================================================
+
+        st.subheader("📌 Key Performance Indicators")
+
+        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+
+        with kpi1:
+
             st.metric(
-                "👥 Customers",
+                "👥 Total Customers",
                 f"{total_customers:,}"
             )
 
-        with col2:
+        with kpi2:
+
             st.metric(
-                "⚠️ Churned",
+                "⚠️ Churned Customers",
                 f"{churned:,}"
             )
 
-        with col3:
+        with kpi3:
+
             st.metric(
                 "📉 Churn Rate",
                 f"{churn_rate:.2f}%"
             )
 
-        with col4:
+        with kpi4:
+
             st.metric(
-                "🤖 Model",
-                "Loaded" if model else "Not Found"
+                "💰 Avg Monthly Charges",
+                f"${avg_monthly_charges:,.2f}"
+            )
+
+        with kpi5:
+
+            st.metric(
+                "⏳ Avg Tenure",
+                f"{avg_tenure:.1f} months"
+            )
+
+        st.markdown("---")
+
+        # ====================================================
+        # CHART 1 — CHURN VS STAY
+        # ====================================================
+
+        st.subheader("📊 1. Customer Churn Distribution")
+
+        if "Churn" in dataset.columns:
+
+            churn_chart = (
+                dataset["Churn"]
+                .value_counts()
+                .rename_axis("Customer Status")
+                .reset_index(name="Customers")
+            )
+
+            st.bar_chart(
+                churn_chart.set_index("Customer Status")
+            )
+
+            st.caption(
+                "Shows the overall distribution of customers "
+                "who stayed versus customers who churned."
+            )
+
+        st.markdown("---")
+
+        # ====================================================
+        # CHART 2 — CHURN BY CONTRACT
+        # ====================================================
+
+        st.subheader("📄 2. Churn by Contract Type")
+
+        if (
+            "Contract" in dataset.columns
+            and "Churn" in dataset.columns
+        ):
+
+            contract_churn = pd.crosstab(
+                dataset["Contract"],
+                dataset["Churn"]
+            )
+
+            st.bar_chart(contract_churn)
+
+            st.caption(
+                "Month-to-month customers can be compared with "
+                "one-year and two-year contract customers."
+            )
+
+        st.markdown("---")
+
+        # ====================================================
+        # CHART 3 — CHURN BY INTERNET SERVICE
+        # ====================================================
+
+        st.subheader("🌐 3. Churn by Internet Service")
+
+        if (
+            "InternetService" in dataset.columns
+            and "Churn" in dataset.columns
+        ):
+
+            internet_churn = pd.crosstab(
+                dataset["InternetService"],
+                dataset["Churn"]
+            )
+
+            st.bar_chart(internet_churn)
+
+            st.caption(
+                "Compares churn behavior across DSL, Fiber optic, "
+                "and customers without internet service."
+            )
+
+        st.markdown("---")
+
+        # ====================================================
+        # CHART 4 — CHURN BY PAYMENT METHOD
+        # ====================================================
+
+        st.subheader("💳 4. Churn by Payment Method")
+
+        if (
+            "PaymentMethod" in dataset.columns
+            and "Churn" in dataset.columns
+        ):
+
+            payment_churn = pd.crosstab(
+                dataset["PaymentMethod"],
+                dataset["Churn"]
+            )
+
+            st.bar_chart(payment_churn)
+
+            st.caption(
+                "Identifies differences in churn across customer "
+                "payment methods."
+            )
+
+        st.markdown("---")
+
+        # ====================================================
+        # CHART 5 — CHURN RATE BY TENURE GROUP
+        # ====================================================
+
+        st.subheader("📈 5. Churn Rate by Tenure Group")
+
+        if (
+            "tenure" in dataset.columns
+            and "Churn" in dataset.columns
+        ):
+
+            tenure_data = dataset.copy()
+
+            tenure_data["TenureGroup"] = pd.cut(
+                tenure_data["tenure"],
+                bins=[
+                    -1,
+                    12,
+                    24,
+                    48,
+                    60,
+                    np.inf
+                ],
+                labels=[
+                    "0-12 months",
+                    "13-24 months",
+                    "25-48 months",
+                    "49-60 months",
+                    "60+ months"
+                ]
+            )
+
+            tenure_data["_ChurnFlag"] = (
+                tenure_data["Churn"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .isin(
+                    [
+                        "yes",
+                        "1",
+                        "true",
+                        "churn",
+                        "churned"
+                    ]
+                )
+                .astype(int)
+            )
+
+            tenure_churn = (
+                tenure_data
+                .groupby(
+                    "TenureGroup",
+                    observed=False
+                )["_ChurnFlag"]
+                .mean()
+                .mul(100)
+            )
+
+            st.line_chart(
+                tenure_churn
+            )
+
+            st.caption(
+                "Shows the percentage of customers who churn "
+                "within different tenure groups."
+            )
+
+        st.markdown("---")
+
+        # ====================================================
+        # BUSINESS INSIGHTS
+        # ====================================================
+
+        st.subheader("💡 Business Insights")
+
+        insight_col1, insight_col2 = st.columns(2)
+
+        with insight_col1:
+
+            st.markdown(
+                f"""
+                **Customer Base**
+
+                - Total customers: **{total_customers:,}**
+                - Churned customers: **{churned:,}**
+                - Customers retained: **{stayed:,}**
+                - Overall churn rate: **{churn_rate:.2f}%**
+                """
+            )
+
+        with insight_col2:
+
+            st.markdown(
+                f"""
+                **Customer Economics**
+
+                - Average monthly charge:
+                  **${avg_monthly_charges:,.2f}**
+                - Average customer tenure:
+                  **{avg_tenure:.1f} months**
+                - Model status:
+                  **{"Loaded ✅" if model else "Not Found ❌"}**
+                """
             )
 
     else:
 
-        col1, col2, col3 = st.columns(3)
+        # ====================================================
+        # DATASET NOT FOUND
+        # ====================================================
 
-        with col1:
-            st.metric("👥 Dataset", "Not Found")
+        st.error(
+            "❌ Telecom dataset could not be found."
+        )
 
-        with col2:
-            st.metric("🤖 Model", "Loaded" if model else "Not Found")
+        st.info(
+            f"""
+            Please make sure your CSV file is inside:
 
-        with col3:
-            st.metric("📊 Status", "Ready")
+            `{DATA_DIR}`
 
-    st.markdown("---")
+            Supported filenames include:
 
-    # --------------------------------------------------------
-    # CHURN DISTRIBUTION
-    # --------------------------------------------------------
+            - WA_Fn-UseC_-Telco-Customer-Churn.csv
+            - telco_customer_churn.csv
+            - Telco-Customer-Churn.csv
+            - telco-churn.csv
+            - cleaned_telco_churn.csv
+            """
+        )
 
-    if dataset is not None and "Churn" in dataset.columns:
-
-        st.subheader("📊 Churn Distribution")
-
-        churn_counts = dataset["Churn"].value_counts()
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-
-            st.bar_chart(churn_counts)
-
-        with col2:
-
-            st.dataframe(
-                churn_counts.rename("Customers"),
-                use_container_width=True
-            )
-
-    # --------------------------------------------------------
+    # ========================================================
     # PROJECT PIPELINE
-    # --------------------------------------------------------
+    # ========================================================
 
     st.markdown("---")
 
@@ -431,7 +727,10 @@ if page == "🏠 Dashboard":
         ("6️⃣", "Prediction")
     ]
 
-    for col, (number, name) in zip(cols, pipeline_steps):
+    for col, (number, name) in zip(
+        cols,
+        pipeline_steps
+    ):
 
         with col:
 
@@ -445,6 +744,7 @@ if page == "🏠 Dashboard":
                 unsafe_allow_html=True
             )
 
+
 # ============================================================
 # CHURN PREDICTION
 # ============================================================
@@ -454,8 +754,8 @@ elif page == "🔮 Churn Prediction":
     st.title("🔮 Customer Churn Prediction")
 
     st.write(
-        "Enter customer information below to estimate the likelihood "
-        "of customer churn."
+        "Enter customer information below to estimate "
+        "the likelihood of customer churn."
     )
 
     if model is None:
@@ -697,7 +997,11 @@ elif page == "🔮 Churn Prediction":
             # HANDLE PREDICTION
             # ------------------------------------------------
 
-            prediction_string = str(prediction).strip().lower()
+            prediction_string = (
+                str(prediction)
+                .strip()
+                .lower()
+            )
 
             churn_prediction = prediction_string in [
                 "yes",
@@ -735,7 +1039,9 @@ elif page == "🔮 Churn Prediction":
                     """
                     <div class="prediction-box">
                         <h2>⚠️ High Churn Risk</h2>
-                        <p>This customer is predicted to churn.</p>
+                        <p>
+                            This customer is predicted to churn.
+                        </p>
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -747,7 +1053,9 @@ elif page == "🔮 Churn Prediction":
                     """
                     <div class="prediction-box">
                         <h2>✅ Low Churn Risk</h2>
-                        <p>This customer is predicted to stay.</p>
+                        <p>
+                            This customer is predicted to stay.
+                        </p>
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -761,7 +1069,13 @@ elif page == "🔮 Churn Prediction":
                 )
 
                 st.progress(
-                    min(max(churn_probability, 0.0), 1.0)
+                    min(
+                        max(
+                            churn_probability,
+                            0.0
+                        ),
+                        1.0
+                    )
                 )
 
             # ------------------------------------------------
@@ -770,7 +1084,9 @@ elif page == "🔮 Churn Prediction":
 
             st.markdown("---")
 
-            st.subheader("💡 Business Recommendation")
+            st.subheader(
+                "💡 Business Recommendation"
+            )
 
             if churn_prediction:
 
@@ -800,11 +1116,16 @@ elif page == "🔮 Churn Prediction":
                     """
                 )
 
-            # Save prediction
+            # ------------------------------------------------
+            # SAVE PREDICTION
+            # ------------------------------------------------
+
             st.session_state.prediction_history.append(
                 {
                     "Prediction": (
-                        "Churn" if churn_prediction else "Stay"
+                        "Churn"
+                        if churn_prediction
+                        else "Stay"
                     ),
                     "Churn Probability": (
                         churn_probability
@@ -826,11 +1147,12 @@ elif page == "🔮 Churn Prediction":
 
             st.info(
                 """
-                This usually happens when the columns supplied by the
-                Streamlit application do not exactly match the columns
-                expected by your trained pipeline.
+                This usually happens when the columns supplied
+                by the Streamlit application do not exactly match
+                the columns expected by your trained pipeline.
                 """
             )
+
 
 # ============================================================
 # DATASET
@@ -853,7 +1175,8 @@ elif page == "📊 Dataset":
     else:
 
         st.success(
-            f"Dataset loaded successfully: {dataset.shape[0]:,} rows × "
+            f"Dataset loaded successfully: "
+            f"{dataset.shape[0]:,} rows × "
             f"{dataset.shape[1]:,} columns"
         )
 
@@ -917,11 +1240,15 @@ elif page == "📊 Dataset":
                     for dtype in dataset.dtypes
                 ],
                 "Missing Values": [
-                    int(dataset[col].isna().sum())
+                    int(
+                        dataset[col].isna().sum()
+                    )
                     for col in dataset.columns
                 ],
                 "Unique Values": [
-                    int(dataset[col].nunique())
+                    int(
+                        dataset[col].nunique()
+                    )
                     for col in dataset.columns
                 ]
             }
@@ -932,6 +1259,7 @@ elif page == "📊 Dataset":
             use_container_width=True,
             hide_index=True
         )
+
 
 # ============================================================
 # ABOUT
@@ -945,14 +1273,14 @@ elif page == "ℹ️ About Project":
         """
         ## Telecom Customer Churn Prediction
 
-        This project uses Machine Learning to identify telecom customers
-        who are likely to discontinue their services.
+        This project uses Machine Learning to identify telecom
+        customers who are likely to discontinue their services.
 
         ### 🎯 Business Problem
 
         Customer churn is an important business problem for telecom
-        companies because acquiring a new customer can be more expensive
-        than retaining an existing customer.
+        companies because acquiring a new customer can be more
+        expensive than retaining an existing customer.
 
         The objective of this project is to:
 
@@ -1044,12 +1372,13 @@ elif page == "ℹ️ About Project":
 
         ### 👨‍💻 Project Objective
 
-        The final application allows business users to enter customer
-        information and receive a machine-learning-based churn prediction
-        along with an estimated probability and recommended retention
-        actions.
+        The final application allows business users to enter
+        customer information and receive a machine-learning-based
+        churn prediction along with an estimated probability and
+        recommended retention actions.
         """
     )
+
 
 # ============================================================
 # FOOTER
@@ -1058,5 +1387,6 @@ elif page == "ℹ️ About Project":
 st.markdown("---")
 
 st.caption(
-    "Telecom Customer Churn Prediction • Machine Learning Portfolio Project"
+    "Telecom Customer Churn Prediction • "
+    "Machine Learning Portfolio Project"
 )
